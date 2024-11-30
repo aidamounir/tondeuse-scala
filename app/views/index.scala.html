@@ -1,0 +1,312 @@
+@(maxX: Int, maxY: Int, chartData: Seq[(Int, Int)], results: List[String])
+
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Tondeuse Simulation</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Container for layout with Flexbox */
+    .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 20px;
+      /* Controls the gap between the sections */
+    }
+
+    /* Left section styling with center alignment */
+    .left-section {
+      width: 45%;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      /* Centers content horizontally */
+      text-align: center;
+      /* Centers text within each element */
+    }
+
+    /* Right section for the chart */
+    .right-section {
+      width: 45%;
+      padding: 20px;
+    }
+
+    /* Additional styling for inputs and buttons to align properly */
+    .left-section input,
+    .left-section button {
+      margin: 5px 0;
+      /* Adds some spacing between inputs and buttons */
+    }
+
+    .button-container {
+      display: flex;
+      gap: 10px;
+      /* Space between buttons */
+      margin-top: 10px;
+      /* Adds space above the buttons */
+    }
+  </style>
+
+
+  <script>
+    // Initialize chart data from Scala server data
+    const chartData = @if(chartData.nonEmpty) {
+      Html(chartData.map {
+        case (x, y) => s ""
+        "{"
+        x ": $x, "
+        y ": $y}"
+        ""
+      }.mkString("[", ",", "]"))
+    } else {
+      "[]"
+    };
+  </script>
+</head>
+
+<body>
+  <div class="container">
+    <div class="left-section">
+      <h1>Simulation Results</h1>
+
+      <!-- Form to input grid size -->
+      <div>
+        <label for="maxX">Max X: </label>
+        <input type="number" id="maxX" value="@maxX" required onchange="updateChartDimensions()" />
+
+        <label for="maxY">Max Y: </label>
+        <input type="number" id="maxY" value="@maxY" required onchange="updateChartDimensions()" />
+      </div>
+
+      <!-- Container for multiple Tondeuse inputs -->
+      <div id="tondeuseContainer">
+        <h3>Tondeuses</h3>
+      </div>
+
+      <div class="button-container">
+        <button onclick="addTondeuse()">Add Tondeuse</button>
+        <button onclick="deleteTondeuse()">Delete Tondeuse</button>
+        <button onclick="runSimulation()">Run Simulation</button>
+      </div>
+
+      <div id="finalPositions" style="margin-top: 20px;">
+        <h3>Final Positions</h3>
+        <ul id="finalPositionsList"></ul>
+      </div>
+
+    </div>
+
+    <div class="right-section">
+      <!-- Chart to display the final positions -->
+      <canvas id="xyChart" width="400" height="400"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // Your existing JavaScript code for chart and simulation goes here
+    // Define the plugin to draw the arrow on the last point
+    const arrowPlugin = {
+      id: 'arrowPlugin',
+      afterDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach(dataset => {
+          const data = dataset.data;
+          const lastPoint = data[data.length - 1];
+          const orientation = dataset.orientation;
+
+          if (lastPoint && orientation) {
+            const x = chart.scales.x.getPixelForValue(lastPoint.x);
+            const y = chart.scales.y.getPixelForValue(lastPoint.y);
+            drawArrow(ctx, x, y, orientation);
+          }
+        });
+      }
+    };
+
+    function updateChartDimensions() {
+      const maxX = parseInt(document.getElementById('maxX').value);
+      const maxY = parseInt(document.getElementById('maxY').value);
+
+      // Update chart scales
+      chart.options.scales.x.max = maxX;
+      chart.options.scales.y.max = maxY;
+
+      // Redraw the chart
+      chart.update();
+    }
+
+    // Arrow drawing function
+    function drawArrow(ctx, x, y, orientation, arrowSize = 10) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.beginPath();
+
+      if (orientation === 'N') {
+        ctx.moveTo(0, -arrowSize);
+        ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+        ctx.lineTo(arrowSize / 2, arrowSize / 2);
+      } else if (orientation === 'E') {
+        ctx.moveTo(arrowSize, 0);
+        ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+        ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+      } else if (orientation === 'S') {
+        ctx.moveTo(0, arrowSize);
+        ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+        ctx.lineTo(arrowSize / 2, -arrowSize / 2);
+      } else if (orientation === 'W') {
+        ctx.moveTo(-arrowSize, 0);
+        ctx.lineTo(arrowSize / 2, -arrowSize / 2);
+        ctx.lineTo(arrowSize / 2, arrowSize / 2);
+      }
+
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Chart configuration for Tondeuse paths
+    const config = {
+      type: 'line',
+      data: {
+        datasets: []
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            min: 0,
+            max: @maxX
+          },
+          y: {
+            min: 0,
+            max: @maxY
+          }
+        }
+      },
+      plugins: [arrowPlugin]
+    };
+
+    const chart = new Chart(document.getElementById('xyChart'), config);
+
+    function addTondeuse() {
+      const tondeuseIndex = document.querySelectorAll('.tondeuse-input').length + 1;
+      const container = document.getElementById('tondeuseContainer');
+      container.insertAdjacentHTML('beforeend', `
+    <div class="tondeuse-input">
+      <h4>Tondeuse ${tondeuseIndex}</h4>
+      <label>x, y, orientation:</label>
+      <input type="text" class="positionOrientationInput" placeholder="x y orientation" required />
+      <label>Commands:</label>
+      <input type="text" class="commandsInput" required />
+    </div>
+  `);
+    }
+
+    function deleteTondeuse() {
+      const tondeuseContainer = document.getElementById('tondeuseContainer');
+      const tondeuseInputs = document.querySelectorAll('.tondeuse-input');
+      console.log("Current Tondeuse count:", tondeuseInputs.length); // Debugging line
+
+      if (tondeuseInputs.length > 0) {
+        const lastTondeuse = tondeuseInputs[tondeuseInputs.length - 1];
+        tondeuseContainer.removeChild(lastTondeuse);
+        console.log("Deleted last Tondeuse"); // Debugging line
+      } else {
+        alert("No Tondeuse to delete.");
+      }
+    }
+
+    function runSimulation() {
+      const maxX = parseInt(document.getElementById('maxX').value);
+      const maxY = parseInt(document.getElementById('maxY').value);
+
+      const tondeuses = Array.from(document.querySelectorAll('#tondeuseContainer > div')).map(div => {
+        const positionOrientation = div.querySelector('.positionOrientationInput').value.trim().toUpperCase().split(" ");
+        const commands = div.querySelector('.commandsInput').value;
+        if (positionOrientation.length !== 3) {
+          alert("Format should be 'x y orientation' (e.g., '1 2 N').");
+          throw new Error("Invalid format.");
+        }
+        const [x, y, orientation] = positionOrientation;
+        return {
+          x: parseInt(x),
+          y: parseInt(y),
+          orientation: orientation.toUpperCase(),
+          commands
+        };
+      });
+
+      const csrfTokenElement = document.getElementById("csrfToken");
+      const csrfToken = csrfTokenElement ? csrfTokenElement.value : "";
+
+      fetch('/processMultiple', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    maxX,
+    maxY,
+    tondeuses
+  })
+})
+  .then(response => {
+    if (!response.ok) {
+      return response.json().then(err => {
+        throw new Error(err.error || "Unexpected server error");
+      });
+    }
+    return response.json();
+  })
+  .then(results => {
+    document.getElementById('finalPositionsList').innerHTML = ''; // Clear previous results
+    chart.data.datasets = []; // Clear chart datasets
+
+    results.forEach(result => {
+      if (result.error) {
+        // Show error notification for each Tondeuse
+        alert(result.error); // Display the error using a modal
+      } else {
+        // Handle successful results
+        const positions = result.positions.map(pos => ({
+          x: pos.x,
+          y: pos.y
+        }));
+        const finalPosition = positions[positions.length - 1];
+        const finalOrientation = result.positions[result.positions.length - 1].orientation;
+
+        chart.data.datasets.push({
+          label: `${result.tondeuse} Path`,
+          data: positions,
+          borderColor: `rgba(${Math.random() * 255}, ${Math.random() * 255}, ${Math.random() * 255}, 1)`,
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: false,
+          pointRadius: 5,
+          orientation: finalOrientation
+        });
+
+        document.getElementById('finalPositionsList').insertAdjacentHTML('beforeend', `
+          <li>${result.tondeuse}: ${finalPosition.x}, ${finalPosition.y}, ${finalOrientation}</li>
+        `);
+      }
+    });
+
+    chart.update();
+  })
+  .catch(error => {
+    // Display a global error notification
+    showModal(`Error: ${error.message}`);
+  });
+
+    }
+  </script>
+</body>
+
+</html>
